@@ -1,198 +1,121 @@
-import { useMemo, useState } from "react"
-import { motion } from "framer-motion"
-import { MapPin } from "lucide-react"
-import { Button } from "../components/ui/button"
-import { Card, CardContent } from "../components/ui/card"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "../components/ui/dialog"
-import { Input } from "../components/ui/input"
-import { Badge } from "../components/ui/badge"
-import { warehouses as seedWarehouses } from "../data/warehouses"
-import type { WarehouseRecord } from "../types/warehouse"
+import { useState } from "react";
+import { Plus, Trash2 } from "lucide-react";
+import { warehousesApi } from "../lib/api";
+import { useApi } from "../lib/useApi";
+import { Warehouse } from "../types";
+import {
+  PageHeader, Spinner, ErrorMessage, EmptyState, Modal,
+  FormField, Input, Button, Table, Thead, Th, Tr, Td,
+} from "../components/ui";
 
 export default function WarehousesPage() {
-  const [items, setItems] = useState<WarehouseRecord[]>(seedWarehouses)
-  const [search, setSearch] = useState("")
-  const [open, setOpen] = useState(false)
-  const [mode, setMode] = useState<"create" | "edit" | "view">("create")
-  const [selected, setSelected] = useState<WarehouseRecord | null>(null)
-  const emptyForm: WarehouseRecord = {
-    warehouse_id: "",
-    location_name: "",
-    address: "",
-    capacity: 0,
-    utilization: 0,
-  }
-  const [form, setForm] = useState<WarehouseRecord>(emptyForm)
+  const { data: warehouses, loading, error, refetch } = useApi(warehousesApi.list);
+  const [showModal, setShowModal] = useState(false);
+  const [saving, setSaving]       = useState(false);
+  const [formError, setFormError] = useState("");
+  const [form, setForm] = useState<Partial<Warehouse>>({
+    location_name: "", address: "", capacity: 0, used: 0, manager: "",
+  });
 
-  const filtered = useMemo(
-    () =>
-      items.filter((w) =>
-        `${w.warehouse_id} ${w.location_name} ${w.address}`.toLowerCase().includes(search.toLowerCase())
-      ),
-    [items, search]
-  )
-
-  const onCreate = () => {
-    setMode("create")
-    setForm(emptyForm)
-    setSelected(null)
-    setOpen(true)
+  async function handleCreate() {
+    if (!form.location_name) { setFormError("Location name is required."); return; }
+    setSaving(true); setFormError("");
+    try {
+      await warehousesApi.create(form);
+      setShowModal(false);
+      setForm({ location_name: "", address: "", capacity: 0, used: 0, manager: "" });
+      refetch();
+    } catch (e: unknown) {
+      setFormError((e as { message: string }).message ?? "Failed.");
+    } finally { setSaving(false); }
   }
 
-  const onEdit = (item: WarehouseRecord) => {
-    setMode("edit")
-    setForm(item)
-    setSelected(item)
-    setOpen(true)
-  }
-
-  const onView = (item: WarehouseRecord) => {
-    setMode("view")
-    setSelected(item)
-    setOpen(true)
-  }
-
-  const onDelete = (item: WarehouseRecord) => {
-    setItems((curr) => curr.filter((x) => x.warehouse_id !== item.warehouse_id))
-  }
-
-  const onSave = () => {
-    if (mode === "create") {
-      setItems((curr) => [form, ...curr])
-    } else if (mode === "edit" && selected) {
-      setItems((curr) => curr.map((x) => (x.warehouse_id === selected.warehouse_id ? form : x)))
-    }
-    setOpen(false)
+  async function handleDelete(id: string) {
+    if (!confirm("Delete this warehouse?")) return;
+    await warehousesApi.delete(id).catch(() => {});
+    refetch();
   }
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h2 className="text-3xl font-semibold tracking-tight">Warehouses</h2>
-          <p className="text-sm text-slate-400">Manage warehouse locations and capacity.</p>
-        </div>
-        <div className="flex gap-3">
-          <Input
-            placeholder="Search warehouses..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-72 border-white/10 bg-white/5 text-white"
-          />
-          <Button onClick={onCreate}>New Warehouse</Button>
-        </div>
-      </div>
-
-      <div className="grid gap-6 xl:grid-cols-3">
-        {filtered.map((item) => (
-          <motion.div key={item.warehouse_id} whileHover={{ y: -4 }}>
-            <Card className="border-white/10 bg-white/5 text-white">
-              <CardContent className="p-5">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="text-sm text-cyan-300">{item.warehouse_id}</p>
-                    <h3 className="mt-2 text-xl font-semibold">{item.location_name}</h3>
-                    <p className="mt-1 flex items-center gap-2 text-sm text-slate-400">
-                      <MapPin className="h-4 w-4" /> {item.address}
-                    </p>
-                  </div>
-                  <Badge className="border-cyan-400/20 bg-cyan-500/10 text-cyan-200">
-                    {item.utilization}% used
-                  </Badge>
-                </div>
-
-                <div className="mt-5 h-2 rounded-full bg-white/10">
-                  <div
-                    className="h-2 rounded-full bg-gradient-to-r from-cyan-400 to-violet-500"
-                    style={{ width: `${item.utilization}%` }}
-                  />
-                </div>
-
-                <div className="mt-4 flex items-center justify-between text-sm text-slate-400">
-                  <span>Capacity</span>
-                  <span>{item.capacity.toLocaleString()} units</span>
-                </div>
-
-                <div className="mt-5 flex gap-2">
-                  <Button className="flex-1" variant="outline" onClick={() => onView(item)}>
-                    View
-                  </Button>
-                  <Button className="flex-1" variant="outline" onClick={() => onEdit(item)}>
-                    Edit
-                  </Button>
-                  <Button variant="destructive" onClick={() => onDelete(item)}>
-                    Delete
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-        ))}
-      </div>
-
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-2xl border-white/10 bg-slate-950 text-white">
-          <DialogHeader>
-            <DialogTitle>
-              {mode === "create" ? "Create Warehouse" : mode === "edit" ? "Edit Warehouse" : "Warehouse Details"}
-            </DialogTitle>
-            <DialogDescription className="text-slate-400">
-              Manage warehouse record data.
-            </DialogDescription>
-          </DialogHeader>
-
-          {mode === "view" && selected ? (
-            <div className="grid gap-4 md:grid-cols-2">
-              {Object.entries(selected).map(([key, value]) => (
-                <div key={key} className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                  <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
-                    {key.replaceAll("_", " ")}
-                  </p>
-                  <p className="mt-2 text-sm">{String(value)}</p>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="grid gap-4 md:grid-cols-2">
-              <InputField label="Warehouse ID" value={form.warehouse_id} onChange={(v) => setForm({ ...form, warehouse_id: v })} />
-              <InputField label="Location Name" value={form.location_name} onChange={(v) => setForm({ ...form, location_name: v })} />
-              <InputField label="Address" value={form.address} onChange={(v) => setForm({ ...form, address: v })} />
-              <InputField label="Capacity" type="number" value={String(form.capacity)} onChange={(v) => setForm({ ...form, capacity: Number(v) || 0 })} />
-              <InputField label="Utilization %" type="number" value={String(form.utilization)} onChange={(v) => setForm({ ...form, utilization: Number(v) || 0 })} />
-            </div>
-          )}
-
-          {mode !== "view" && (
-            <DialogFooter>
-              <Button onClick={onSave}>Save Warehouse</Button>
-            </DialogFooter>
-          )}
-        </DialogContent>
-      </Dialog>
-    </div>
-  )
-}
-
-function InputField({
-  label,
-  value,
-  onChange,
-  type = "text",
-}: {
-  label: string
-  value: string
-  onChange: (value: string) => void
-  type?: string
-}) {
-  return (
-    <div className="space-y-2">
-      <p className="text-sm text-slate-400">{label}</p>
-      <Input
-        type={type}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="border-white/10 bg-white/5 text-white"
+      <PageHeader
+        title="Warehouses"
+        description="Monitor storage capacity and usage across all locations."
+        action={
+          <Button onClick={() => setShowModal(true)}>
+            <span className="flex items-center gap-2"><Plus className="h-4 w-4" /> New warehouse</span>
+          </Button>
+        }
       />
+
+      {loading && <Spinner />}
+      {error   && <ErrorMessage message={error} />}
+      {!loading && !error && (
+        warehouses && warehouses.length > 0 ? (
+          <Table>
+            <Thead>
+              <tr><Th>Name</Th><Th>Address</Th><Th>Manager</Th><Th>Capacity</Th><Th>Usage</Th><Th /></tr>
+            </Thead>
+            <tbody>
+              {warehouses.map((w) => {
+                const pct = w.capacity > 0 ? Math.round((w.used / w.capacity) * 100) : 0;
+                return (
+                  <Tr key={w.warehouse_id}>
+                    <Td className="font-medium">{w.location_name}</Td>
+                    <Td>{w.address ?? "—"}</Td>
+                    <Td>{w.manager ?? "—"}</Td>
+                    <Td>{w.capacity.toLocaleString()}</Td>
+                    <Td>
+                      <div className="flex items-center gap-3">
+                        <div className="h-2 w-24 overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-700">
+                          <div className={`h-full rounded-full transition-all ${pct > 90 ? "bg-red-500" : pct > 70 ? "bg-amber-500" : "bg-emerald-500"}`}
+                            style={{ width: `${pct}%` }} />
+                        </div>
+                        <span className="text-xs text-zinc-500">{pct}%</span>
+                      </div>
+                    </Td>
+                    <Td>
+                      <button onClick={() => handleDelete(w.warehouse_id)}
+                        className="rounded-xl p-1.5 text-zinc-400 hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-950/30">
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </Td>
+                  </Tr>
+                );
+              })}
+            </tbody>
+          </Table>
+        ) : <EmptyState message="No warehouses found." />
+      )}
+
+      {showModal && (
+        <Modal title="New warehouse" onClose={() => setShowModal(false)}>
+          <div className="space-y-4">
+            <FormField label="Location name">
+              <Input value={form.location_name ?? ""} onChange={(e) => setForm(f => ({ ...f, location_name: e.target.value }))} placeholder="Warehouse A" />
+            </FormField>
+            <FormField label="Address">
+              <Input value={form.address ?? ""} onChange={(e) => setForm(f => ({ ...f, address: e.target.value }))} placeholder="123 Industrial Rd, City" />
+            </FormField>
+            <FormField label="Manager">
+              <Input value={form.manager ?? ""} onChange={(e) => setForm(f => ({ ...f, manager: e.target.value }))} placeholder="Jane Smith" />
+            </FormField>
+            <div className="grid grid-cols-2 gap-4">
+              <FormField label="Capacity">
+                <Input type="number" value={form.capacity ?? 0} onChange={(e) => setForm(f => ({ ...f, capacity: Number(e.target.value) }))} />
+              </FormField>
+              <FormField label="Used">
+                <Input type="number" value={form.used ?? 0} onChange={(e) => setForm(f => ({ ...f, used: Number(e.target.value) }))} />
+              </FormField>
+            </div>
+            {formError && <p className="text-sm text-red-500">{formError}</p>}
+            <div className="flex justify-end gap-3 pt-2">
+              <Button variant="ghost" onClick={() => setShowModal(false)}>Cancel</Button>
+              <Button onClick={handleCreate} disabled={saving}>{saving ? "Saving…" : "Create warehouse"}</Button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
-  )
+  );
 }

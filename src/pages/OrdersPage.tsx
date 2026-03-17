@@ -1,260 +1,154 @@
-import { useMemo, useState } from "react"
-import { Button } from "../components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../components/ui/card"
-import { Input } from "../components/ui/input"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "../components/ui/dialog"
-import { Badge } from "../components/ui/badge"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select"
-import { orders as seedOrders } from "../data/orders"
-import type { Order, OrderStatus, PaymentStatus, ShipmentStatus } from "../types/order"
-import { currency } from "../lib/format"
+import { useState } from "react";
+import { Plus, Trash2 } from "lucide-react";
+import { ordersApi, productsApi, customersApi } from "../lib/api";
+import { useApi } from "../lib/useApi";
+import { Order } from "../types";
+import {
+  PageHeader, Spinner, ErrorMessage, EmptyState, Modal,
+  FormField, Input, Select, Button, StatusBadge,
+  Table, Thead, Th, Tr, Td,
+} from "../components/ui";
 
-const ORDER_STATUS_OPTIONS: OrderStatus[] = ["Pending", "Processing", "Completed"]
-const PAYMENT_STATUS_OPTIONS: PaymentStatus[] = ["Awaiting Payment", "Paid"]
-const SHIPMENT_STATUS_OPTIONS: ShipmentStatus[] = ["Not Shipped", "Label Created", "In Transit"]
+const STATUSES: Order["status"][] = ["pending","processing","shipped","delivered","cancelled"];
 
 export default function OrdersPage() {
-  const [items, setItems] = useState<Order[]>(seedOrders)
-  const [search, setSearch] = useState("")
-  const [open, setOpen] = useState(false)
-  const [mode, setMode] = useState<"create" | "edit" | "view">("create")
-  const [selected, setSelected] = useState<Order | null>(null)
-  const emptyForm: Order = {
-    order_id: "",
-    customer_name: "",
-    order_date: "",
-    total_amount: 0,
-    status: "Pending",
-    payment_status: "Awaiting Payment",
-    shipment_status: "Not Shipped",
-  }
-  const [form, setForm] = useState<Order>(emptyForm)
+  const [filter, setFilter] = useState<Order["status"] | "all">("all");
+  const { data: orders, loading, error, refetch } = useApi(() => ordersApi.list());
+  const { data: products } = useApi(() => productsApi.list());
+  const { data: customers } = useApi(customersApi.list);
 
-  const filtered = useMemo(
-    () =>
-      items.filter((o) =>
-        `${o.order_id} ${o.customer_name} ${o.status}`.toLowerCase().includes(search.toLowerCase())
-      ),
-    [items, search]
-  )
+  const [showModal, setShowModal] = useState(false);
+  const [saving, setSaving]       = useState(false);
+  const [formError, setFormError] = useState("");
+  const [form, setForm] = useState({
+    customer_id: "", status: "pending" as Order["status"],
+    sku_id: "", quantity: 1, notes: "",
+  });
 
-  const onCreate = () => {
-    setMode("create")
-    setForm(emptyForm)
-    setSelected(null)
-    setOpen(true)
-  }
-
-  const onEdit = (item: Order) => {
-    setMode("edit")
-    setForm(item)
-    setSelected(item)
-    setOpen(true)
+  async function handleCreate() {
+    if (!form.sku_id) { setFormError("Please select a product."); return; }
+    setSaving(true); setFormError("");
+    try {
+      const product = products?.find(p => p.sku_id === form.sku_id);
+      const unit_price = product?.unit_price ?? 0;
+      const total_amount = unit_price * form.quantity;
+      await ordersApi.create({
+        customer_id: form.customer_id || undefined,
+        status: form.status,
+        total_amount,
+        items: [{ sku_id: form.sku_id, quantity: form.quantity, unit_price }],
+      });
+      setShowModal(false);
+      setForm({ customer_id: "", status: "pending", sku_id: "", quantity: 1, notes: "" });
+      refetch();
+    } catch (e: unknown) {
+      setFormError((e as { message: string }).message ?? "Failed.");
+    } finally { setSaving(false); }
   }
 
-  const onView = (item: Order) => {
-    setMode("view")
-    setSelected(item)
-    setOpen(true)
+  async function handleDelete(id: string) {
+    if (!confirm("Delete this order?")) return;
+    await ordersApi.delete(id).catch(() => {});
+    refetch();
   }
 
-  const onDelete = (item: Order) => {
-    setItems((curr) => curr.filter((x) => x.order_id !== item.order_id))
-  }
-
-  const onSave = () => {
-    if (mode === "create") {
-      setItems((curr) => [form, ...curr])
-    } else if (mode === "edit" && selected) {
-      setItems((curr) => curr.map((x) => (x.order_id === selected.order_id ? form : x)))
-    }
-    setOpen(false)
-  }
+  const filtered = (orders ?? []).filter((o) => filter === "all" || o.status === filter);
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h2 className="text-3xl font-semibold tracking-tight">Orders</h2>
-          <p className="text-sm text-slate-400">Manage order, payment, and shipment status.</p>
-        </div>
-        <div className="flex gap-3">
-          <Input
-            placeholder="Search orders..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-72 border-white/10 bg-white/5 text-white"
-          />
-          <Button onClick={onCreate}>New Order</Button>
-        </div>
+      <PageHeader
+        title="Orders"
+        description="Manage purchase orders across all warehouses and suppliers."
+        action={
+          <Button onClick={() => setShowModal(true)}>
+            <span className="flex items-center gap-2"><Plus className="h-4 w-4" /> New order</span>
+          </Button>
+        }
+      />
+
+      <div className="flex flex-wrap gap-2">
+        {(["all", ...STATUSES] as const).map((s) => (
+          <button key={s} onClick={() => setFilter(s)}
+            className={`rounded-full px-4 py-1.5 text-sm font-medium transition ${
+              filter === s
+                ? "bg-zinc-950 text-white dark:bg-white dark:text-zinc-950"
+                : "border border-black/10 text-zinc-600 hover:bg-zinc-100 dark:border-white/10 dark:text-zinc-300 dark:hover:bg-zinc-800"
+            }`}>
+            {s.charAt(0).toUpperCase() + s.slice(1)}
+          </button>
+        ))}
       </div>
 
-      <Card className="border-white/10 bg-white/5 text-white">
-        <CardHeader>
-          <CardTitle>Order Management</CardTitle>
-          <CardDescription className="text-slate-400">
-            Full CRUD order management.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="overflow-x-auto">
-          <table className="min-w-full text-left text-sm">
-            <thead>
-              <tr className="border-b border-white/10 text-slate-400">
-                <th className="py-3">Order ID</th>
-                <th className="py-3">Customer</th>
-                <th className="py-3">Date</th>
-                <th className="py-3">Amount</th>
-                <th className="py-3">Status</th>
-                <th className="py-3">Payment</th>
-                <th className="py-3">Shipment</th>
-                <th className="py-3">Actions</th>
-              </tr>
-            </thead>
+      {loading && <Spinner />}
+      {error   && <ErrorMessage message={error} />}
+      {!loading && !error && (
+        filtered.length > 0 ? (
+          <Table>
+            <Thead>
+              <tr><Th>Order ID</Th><Th>Customer</Th><Th>Total</Th><Th>Status</Th><Th>Date</Th><Th /></tr>
+            </Thead>
             <tbody>
-              {filtered.map((item) => (
-                <tr key={item.order_id} className="border-b border-white/5">
-                  <td className="py-4">{item.order_id}</td>
-                  <td className="py-4">{item.customer_name}</td>
-                  <td className="py-4">{item.order_date}</td>
-                  <td className="py-4">{currency(item.total_amount)}</td>
-                  <td className="py-4"><OrderBadge value={item.status} /></td>
-                  <td className="py-4"><OrderBadge value={item.payment_status} /></td>
-                  <td className="py-4"><OrderBadge value={item.shipment_status} /></td>
-                  <td className="py-4">
-                    <div className="flex gap-2">
-                      <Button size="sm" variant="outline" onClick={() => onView(item)}>View</Button>
-                      <Button size="sm" variant="outline" onClick={() => onEdit(item)}>Edit</Button>
-                      <Button size="sm" variant="destructive" onClick={() => onDelete(item)}>Delete</Button>
-                    </div>
-                  </td>
-                </tr>
+              {filtered.map((o) => (
+                <Tr key={o.order_id}>
+                  <Td className="font-mono text-xs">{o.order_id.slice(0,8)}…</Td>
+                  <Td>{o.customer_name ?? "—"}</Td>
+                  <Td>${Number(o.total_amount).toFixed(2)}</Td>
+                  <Td><StatusBadge status={o.status} /></Td>
+                  <Td>{String(o.order_date).split("T")[0]}</Td>
+                  <Td>
+                    <button onClick={() => handleDelete(o.order_id)}
+                      className="rounded-xl p-1.5 text-zinc-400 hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-950/30">
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </Td>
+                </Tr>
               ))}
             </tbody>
-          </table>
-        </CardContent>
-      </Card>
+          </Table>
+        ) : <EmptyState message="No orders match the selected filter." />
+      )}
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-2xl border-white/10 bg-slate-950 text-white">
-          <DialogHeader>
-            <DialogTitle>
-              {mode === "create" ? "Create Order" : mode === "edit" ? "Edit Order" : "Order Details"}
-            </DialogTitle>
-            <DialogDescription className="text-slate-400">
-              Order form with payment and shipment states.
-            </DialogDescription>
-          </DialogHeader>
-
-          {mode === "view" && selected ? (
-            <div className="grid gap-4 md:grid-cols-2">
-              {Object.entries(selected).map(([key, value]) => (
-                <div key={key} className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                  <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
-                    {key.replaceAll("_", " ")}
-                  </p>
-                  <p className="mt-2 text-sm">{String(value)}</p>
-                </div>
-              ))}
+      {showModal && (
+        <Modal title="New order" onClose={() => setShowModal(false)}>
+          <div className="space-y-4">
+            <FormField label="Customer">
+              <Select value={form.customer_id} onChange={(e) => setForm(f => ({ ...f, customer_id: e.target.value }))}>
+                <option value="">— Select customer (optional) —</option>
+                {(customers ?? []).map((c) => (
+                  <option key={c.customer_id} value={c.customer_id}>{c.name}</option>
+                ))}
+              </Select>
+            </FormField>
+            <FormField label="Product">
+              <Select value={form.sku_id} onChange={(e) => setForm(f => ({ ...f, sku_id: e.target.value }))}>
+                <option value="">— Select product —</option>
+                {(products ?? []).map((p) => (
+                  <option key={p.sku_id} value={p.sku_id}>{p.name} (${Number(p.unit_price).toFixed(2)})</option>
+                ))}
+              </Select>
+            </FormField>
+            <div className="grid grid-cols-2 gap-4">
+              <FormField label="Quantity">
+                <Input type="number" min="1" value={form.quantity}
+                  onChange={(e) => setForm(f => ({ ...f, quantity: Number(e.target.value) }))} />
+              </FormField>
+              <FormField label="Status">
+                <Select value={form.status} onChange={(e) => setForm(f => ({ ...f, status: e.target.value as Order["status"] }))}>
+                  {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+                </Select>
+              </FormField>
             </div>
-          ) : (
-            <div className="grid gap-4 md:grid-cols-2">
-              <InputField label="Order ID" value={form.order_id} onChange={(v) => setForm({ ...form, order_id: v })} />
-              <InputField label="Customer" value={form.customer_name} onChange={(v) => setForm({ ...form, customer_name: v })} />
-              <InputField label="Order Date" type="date" value={form.order_date} onChange={(v) => setForm({ ...form, order_date: v })} />
-              <InputField label="Total Amount" type="number" value={String(form.total_amount)} onChange={(v) => setForm({ ...form, total_amount: Number(v) || 0 })} />
-
-              <SelectField<OrderStatus>
-                label="Status"
-                value={form.status}
-                options={ORDER_STATUS_OPTIONS}
-                onChange={(value) => setForm({ ...form, status: value })}
-              />
-              <SelectField<PaymentStatus>
-                label="Payment Status"
-                value={form.payment_status}
-                options={PAYMENT_STATUS_OPTIONS}
-                onChange={(value) => setForm({ ...form, payment_status: value })}
-              />
-              <SelectField<ShipmentStatus>
-                label="Shipment Status"
-                value={form.shipment_status}
-                options={SHIPMENT_STATUS_OPTIONS}
-                onChange={(value) => setForm({ ...form, shipment_status: value })}
-              />
+            <FormField label="Notes (optional)">
+              <Input value={form.notes} onChange={(e) => setForm(f => ({ ...f, notes: e.target.value }))} />
+            </FormField>
+            {formError && <p className="text-sm text-red-500">{formError}</p>}
+            <div className="flex justify-end gap-3 pt-2">
+              <Button variant="ghost" onClick={() => setShowModal(false)}>Cancel</Button>
+              <Button onClick={handleCreate} disabled={saving}>{saving ? "Saving…" : "Create order"}</Button>
             </div>
-          )}
-
-          {mode !== "view" && (
-            <DialogFooter>
-              <Button onClick={onSave}>Save Order</Button>
-            </DialogFooter>
-          )}
-        </DialogContent>
-      </Dialog>
+          </div>
+        </Modal>
+      )}
     </div>
-  )
-}
-
-function OrderBadge({ value }: { value: string }) {
-  let cls = "border-slate-500/20 bg-slate-500/10 text-slate-300"
-  if (["Paid", "Completed", "In Transit"].includes(value)) {
-    cls = "border-emerald-500/20 bg-emerald-500/10 text-emerald-300"
-  } else if (["Pending", "Processing", "Awaiting Payment", "Not Shipped", "Label Created"].includes(value)) {
-    cls = "border-amber-500/20 bg-amber-500/10 text-amber-300"
-  }
-  return <Badge className={cls}>{value}</Badge>
-}
-
-function InputField({
-  label,
-  value,
-  onChange,
-  type = "text",
-}: {
-  label: string
-  value: string
-  onChange: (value: string) => void
-  type?: string
-}) {
-  return (
-    <div className="space-y-2">
-      <p className="text-sm text-slate-400">{label}</p>
-      <Input
-        type={type}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="border-white/10 bg-white/5 text-white"
-      />
-    </div>
-  )
-}
-
-function SelectField<T extends string>({
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  label: string
-  value: T
-  options: T[]
-  onChange: (value: T) => void
-}) {
-  return (
-    <div className="space-y-2">
-      <p className="text-sm text-slate-400">{label}</p>
-      <Select value={value} onValueChange={(value) => onChange(value as T)}>
-        <SelectTrigger className="border-white/10 bg-white/5 text-white">
-          <SelectValue placeholder={`Select ${label.toLowerCase()}`} />
-        </SelectTrigger>
-        <SelectContent className="border-white/10 bg-slate-900 text-white">
-          {options.map((option) => (
-            <SelectItem key={option} value={option}>
-              {option}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </div>
-  )
+  );
 }

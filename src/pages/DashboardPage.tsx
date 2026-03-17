@@ -1,124 +1,92 @@
-import { motion } from "framer-motion"
-import { Package, ShoppingCart, Warehouse, Truck } from "lucide-react"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../components/ui/card"
-import { Badge } from "../components/ui/badge"
+import { AlertTriangle, Boxes, ShoppingCart, Truck, Warehouse } from "lucide-react";
+import { productsApi, ordersApi, suppliersApi, warehousesApi } from "../lib/api";
+import { useApi } from "../lib/useApi";
+import { StatCard, Spinner, ErrorMessage } from "../components/ui";
+import { User } from "../types";
 
-import { products } from "../data/products"
-import { orders } from "../data/orders"
-import { warehouses } from "../data/warehouses"
-import { suppliers } from "../data/suppliers"
+interface Props { user: User; }
 
-import { isExpiringSoon } from "../lib/format"
+export default function DashboardPage({ user }: Props) {
+  const products   = useApi(() => productsApi.list());
+  const orders     = useApi(() => ordersApi.list());
+  const suppliers  = useApi(suppliersApi.list);
+  const warehouses = useApi(warehousesApi.list);
 
-const stats = [
-  { title: "Products", value: products.length, icon: Package },
-  { title: "Orders", value: orders.length, icon: ShoppingCart },
-  { title: "Warehouses", value: warehouses.length, icon: Warehouse },
-  { title: "Suppliers", value: suppliers.length, icon: Truck },
-]
+  const loading = products.loading || orders.loading || suppliers.loading || warehouses.loading;
+  const error   = products.error   || orders.error   || suppliers.error   || warehouses.error;
 
-export default function DashboardPage() {
-  const alerts = products.filter(
-    (p) => p.stock_quantity <= p.reorder_point || isExpiringSoon(p.expire_date)
-  )
+  const expiringProducts = (products.data ?? [])
+    .filter((p) => p.expiry_date && p.days_left != null && p.days_left >= 0 && p.days_left <= 30)
+    .sort((a, b) => (a.days_left ?? 99) - (b.days_left ?? 99));
+
+  if (loading) return <Spinner />;
+  if (error)   return <ErrorMessage message={error} />;
 
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-3xl font-semibold tracking-tight">Dashboard</h2>
-        <p className="text-sm text-slate-400">
-          Overview of inventory, orders, warehouses, and suppliers.
+        <h1 className="text-3xl font-semibold tracking-tight">Dashboard</h1>
+        <p className="mt-1.5 text-zinc-500 dark:text-zinc-400">
+          Welcome back, {user.username}. Here's your inventory at a glance.
         </p>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {stats.map((item) => {
-          const Icon = item.icon
-          return (
-            <motion.div key={item.title} whileHover={{ y: -4 }}>
-              <Card className="border-white/10 bg-white/5 text-white">
-                <CardContent className="p-5">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <p className="text-sm text-slate-400">{item.title}</p>
-                      <p className="mt-3 text-3xl font-semibold">{item.value}</p>
-                    </div>
-                    <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
-                      <Icon className="h-5 w-5 text-cyan-400" />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
-          )
-        })}
+        <StatCard label="Products"   value={products.data?.length   ?? 0} icon={Boxes}       colorClass="bg-indigo-500/10 text-indigo-600 dark:text-indigo-400" />
+        <StatCard label="Orders"     value={orders.data?.length     ?? 0} icon={ShoppingCart} colorClass="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" />
+        <StatCard label="Suppliers"  value={suppliers.data?.length  ?? 0} icon={Truck}        colorClass="bg-amber-500/10 text-amber-600 dark:text-amber-400" />
+        <StatCard label="Warehouses" value={warehouses.data?.length ?? 0} icon={Warehouse}    colorClass="bg-rose-500/10 text-rose-600 dark:text-rose-400" />
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-12">
-        <Card className="border-white/10 bg-white/5 text-white xl:col-span-7">
-          <CardHeader>
-            <CardTitle>Low Stock & Expiry Alerts</CardTitle>
-            <CardDescription className="text-slate-400">
-              Items that need attention.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {alerts.map((item) => (
-              <div
-                key={item.sku_id}
-                className="flex items-center justify-between rounded-2xl border border-white/10 bg-slate-900/50 p-4"
-              >
-                <div>
-                  <p className="font-medium">{item.name}</p>
-                  <p className="text-sm text-slate-400">
-                    {item.sku_id} • {item.category_name} • {item.supplier_name}
-                  </p>
-                </div>
-                <div className="flex gap-2">
-                  {item.stock_quantity <= item.reorder_point && (
-                    <Badge className="border-amber-500/20 bg-amber-500/10 text-amber-300">
-                      Reorder
-                    </Badge>
-                  )}
-                  {isExpiringSoon(item.expire_date) && (
-                    <Badge className="border-rose-500/20 bg-rose-500/10 text-rose-300">
-                      Expiring Soon
-                    </Badge>
-                  )}
-                </div>
+      <div className="grid gap-6 xl:grid-cols-3">
+        <div className="rounded-3xl border border-black/5 bg-white/70 p-5 shadow-sm dark:border-white/10 dark:bg-zinc-950/60 xl:col-span-2">
+          <h2 className="text-lg font-semibold">System overview</h2>
+          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">Connected modules across your inventory system.</p>
+          <div className="mt-5 grid gap-4 md:grid-cols-2">
+            {[
+              { title: "Orders",    desc: "Track processing, shipment, and delivery." },
+              { title: "Products",  desc: "Monitor stock level, reorder point, and expiry date." },
+              { title: "Suppliers", desc: "Control sourcing and vendor activity." },
+              { title: "Reports",   desc: "Review weekly and monthly performance." },
+            ].map((item) => (
+              <div key={item.title} className="rounded-2xl border border-black/5 bg-white/60 p-4 dark:border-white/10 dark:bg-zinc-900/40">
+                <h3 className="font-medium">{item.title}</h3>
+                <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-300">{item.desc}</p>
               </div>
             ))}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
-        <Card className="border-white/10 bg-white/5 text-white xl:col-span-5">
-          <CardHeader>
-            <CardTitle>Warehouse Utilization</CardTitle>
-            <CardDescription className="text-slate-400">
-              Capacity snapshot.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {warehouses.map((w) => (
-              <div key={w.warehouse_id} className="rounded-2xl border border-white/10 p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium">{w.location_name}</p>
-                    <p className="text-sm text-slate-400">{w.address}</p>
+        <div className="rounded-3xl border border-black/5 bg-white/70 p-5 shadow-sm dark:border-white/10 dark:bg-zinc-950/60">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 text-orange-500" />
+            <h2 className="text-lg font-semibold">Expiry alerts</h2>
+          </div>
+          <div className="mt-4 space-y-3">
+            {expiringProducts.length === 0 ? (
+              <p className="rounded-2xl border border-black/5 p-4 text-sm text-zinc-500 dark:border-white/10 dark:text-zinc-400">
+                No products expiring within 30 days.
+              </p>
+            ) : (
+              expiringProducts.map((p) => (
+                <div key={p.sku_id} className="rounded-2xl border border-orange-500/20 bg-orange-500/10 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="font-medium">{p.name}</p>
+                      <p className="text-sm text-zinc-600 dark:text-zinc-300">
+                        Expires {String(p.expiry_date).split("T")[0]}
+                      </p>
+                    </div>
+                    <span className="shrink-0 rounded-full bg-orange-500/15 px-3 py-1 text-xs font-medium text-orange-700 dark:text-orange-300">
+                      {p.days_left}d left
+                    </span>
                   </div>
-                  <span className="text-sm text-cyan-400">{w.utilization}%</span>
                 </div>
-                <div className="mt-3 h-2 rounded-full bg-white/10">
-                  <div
-                    className="h-2 rounded-full bg-gradient-to-r from-cyan-400 to-violet-500"
-                    style={{ width: `${w.utilization}%` }}
-                  />
-                </div>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
+              ))
+            )}
+          </div>
+        </div>
       </div>
     </div>
-  )
+  );
 }

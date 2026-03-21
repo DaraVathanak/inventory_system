@@ -55,12 +55,16 @@ export const usersApi = {
   list:   () => request<User[]>("/users"),
   create: (data: Partial<User> & { password: string }) =>
     request<User>("/users/admins", { method: "POST", body: JSON.stringify(data) }),
+  update: (id: string, data: Partial<User> & { password?: string }) =>
+    request<User>(`/users/admins/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
   delete: (id: string) => request<void>(`/users/admins/${id}`, { method: "DELETE" }),
 };
 
 export const managersApi = {
   create: (data: { username: string; password: string; department?: string; access_level?: string }) =>
     request<User>("/users/managers", { method: "POST", body: JSON.stringify(data) }),
+  update: (id: string, data: { department?: string; access_level?: string; password?: string }) =>
+    request<User>(`/users/managers/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
   delete: (id: string) => request<void>(`/users/managers/${id}`, { method: "DELETE" }),
 };
 
@@ -77,12 +81,18 @@ export const productsApi = {
     return requestForm<Product>("/products", fd, "POST");
   },
   update: (id: string, data: Partial<Product> & { imageFile?: File | null }) => {
-    const fd = new FormData();
-    Object.entries(data).forEach(([k, v]) => {
-      if (k === "imageFile") { if (v) fd.append("image", v as File); }
-      else if (v !== undefined && v !== null) fd.append(k, String(v));
-    });
-    return requestForm<Product>(`/products/${id}`, fd, "PATCH");
+    // If there is an image file, use multipart FormData
+    if (data.imageFile) {
+      const fd = new FormData();
+      Object.entries(data).forEach(([k, v]) => {
+        if (k === "imageFile") { fd.append("image", v as File); }
+        else if (v !== undefined && v !== null && v !== "") fd.append(k, String(v));
+      });
+      return requestForm<Product>(`/products/${id}`, fd, "PATCH");
+    }
+    // Otherwise use plain JSON (faster, works for restock etc.)
+    const { imageFile: _omit, ...jsonData } = data;
+    return request<Product>(`/products/${id}`, { method: "PATCH", body: JSON.stringify(jsonData) });
   },
   delete: (id: string) => request<void>(`/products/${id}`, { method: "DELETE" }),
 };
@@ -132,6 +142,8 @@ export const reportsApi = {
   get:    (id: string) => request<Report>(`/reports/${id}`),
   create: (data: { date?: string; summary?: string; type: string }) =>
     request<Report>("/reports", { method: "POST", body: JSON.stringify(data) }),
+  update: (id: string, data: { date?: string; summary?: string; type?: string }) =>
+    request<Report>(`/reports/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
   delete: (id: string) => request<void>(`/reports/${id}`, { method: "DELETE" }),
 };
 
@@ -151,4 +163,34 @@ export const employeesApi = {
   update: (id: string, data: { full_name?: string; position?: string; password?: string }) =>
     request<User>(`/users/employees/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
   delete: (id: string) => request<void>(`/users/employees/${id}`, { method: "DELETE" }),
+};
+
+// ── Restock Log ───────────────────────────────────────────────────────────────
+export interface RestockRecord {
+  id: number;
+  sku_id: string;
+  product_name: string;
+  quantity_added: number;
+  stock_before: number;
+  stock_after: number;
+  restocked_by: string;
+  restocked_at: string;
+  note?: string;
+  category_name?: string;
+  image_url?: string;
+}
+
+export const restockLogApi = {
+  list: (sku_id?: string) =>
+    request<RestockRecord[]>(`/restock-log${sku_id ? "?sku_id=" + sku_id : ""}`),
+  create: (data: {
+    sku_id: string;
+    product_name: string;
+    quantity_added: number;
+    stock_before: number;
+    stock_after: number;
+    note?: string;
+  }) => request<RestockRecord>("/restock-log", { method: "POST", body: JSON.stringify(data) }),
+  deleteOne:  (id: number)  => request<void>(`/restock-log/${id}`,  { method: "DELETE" }),
+  clearAll:   ()            => request<void>("/restock-log",         { method: "DELETE" }),
 };

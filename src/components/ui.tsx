@@ -126,10 +126,12 @@ interface FormFieldProps {
   children: ReactNode;
 }
 export function FormField({ label, children }: FormFieldProps) {
+  // Render asterisk in red
+  const parts = label.split("*");
   return (
     <div className="space-y-1.5">
       <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">
-        {label}
+        {parts[0]}{parts.length > 1 && <span className="text-red-500 ml-0.5">*</span>}
       </label>
       {children}
     </div>

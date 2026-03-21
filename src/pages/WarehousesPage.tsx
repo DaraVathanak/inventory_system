@@ -101,11 +101,11 @@ export default function WarehousesPage() {
               <Input value={form.manager ?? ""} onChange={(e) => setForm(f => ({ ...f, manager: e.target.value }))} placeholder="Jane Smith" />
             </FormField>
             <div className="grid grid-cols-2 gap-4">
-              <FormField label="Capacity">
-                <Input type="number" value={form.capacity ?? 0} onChange={(e) => setForm(f => ({ ...f, capacity: Number(e.target.value) }))} />
+              <FormField label="Capacity (≥ 0)">
+                <Input type="number" min="0" value={form.capacity ?? 0} onChange={(e) => setForm(f => ({ ...f, capacity: Math.max(0, Number(e.target.value)) }))} />
               </FormField>
-              <FormField label="Used">
-                <Input type="number" value={form.used ?? 0} onChange={(e) => setForm(f => ({ ...f, used: Number(e.target.value) }))} />
+              <FormField label="Used (≥ 0)">
+                <Input type="number" min="0" value={form.used ?? 0} onChange={(e) => setForm(f => ({ ...f, used: Math.max(0, Number(e.target.value)) }))} />
               </FormField>
             </div>
             {formError && <p className="text-sm text-red-500">{formError}</p>}

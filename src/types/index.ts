@@ -7,7 +7,9 @@ export interface User {
   security_level?: string;
   department?: string;
   access_level?: string;
-  last_login?: string;
+  position?: string;
+  full_name?: string;
+  last_login?: string | null;
   createdAt?: string;
 }
 

@@ -128,9 +128,9 @@ export default function OrdersPage() {
               </Select>
             </FormField>
             <div className="grid grid-cols-2 gap-4">
-              <FormField label="Quantity">
+              <FormField label="Quantity (≥ 1)">
                 <Input type="number" min="1" value={form.quantity}
-                  onChange={(e) => setForm(f => ({ ...f, quantity: Number(e.target.value) }))} />
+                  onChange={(e) => setForm(f => ({ ...f, quantity: Math.max(1, Number(e.target.value)) }))} />
               </FormField>
               <FormField label="Status">
                 <Select value={form.status} onChange={(e) => setForm(f => ({ ...f, status: e.target.value as Order["status"] }))}>

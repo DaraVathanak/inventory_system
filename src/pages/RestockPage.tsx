@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
-import { PackagePlus, Search, ArrowUpDown, CheckCircle2, History } from "lucide-react";
-import { productsApi, restockLogApi, RestockRecord } from "../lib/api";
+import { PackagePlus, Search, ArrowUpDown, CheckCircle2, History, Trash2 } from "lucide-react";
+import { productsApi, restockLogApi } from "../lib/api";
 import { useApi } from "../lib/useApi";
 import { Product } from "../types";
 import { STATIC_BASE } from "../lib/api";
@@ -143,10 +143,26 @@ function RestockModal({ product, onClose, onDone }: {
 }
 
 // ── Restock History Modal ─────────────────────────────────────────────────────
-function HistoryModal({ sku_id, productName, onClose }: {
-  sku_id?: string; productName?: string; onClose: () => void;
+function HistoryModal({ sku_id, productName, onClose, isAdmin }: {
+  sku_id?: string; productName?: string; onClose: () => void; isAdmin?: boolean;
 }) {
-  const { data: logs, loading, error } = useApi(() => restockLogApi.list(sku_id));
+  const { data: logs, loading, error, refetch } = useApi(() => restockLogApi.list(sku_id));
+  const [clearing, setClearing] = useState(false);
+
+  async function handleClearAll() {
+    if (!confirm("Clear ALL restock history? This cannot be undone.")) return;
+    setClearing(true);
+    try {
+      await restockLogApi.clearAll();
+      refetch();
+    } finally { setClearing(false); }
+  }
+
+  async function handleDeleteOne(id: number) {
+    if (!confirm("Delete this record?")) return;
+    await restockLogApi.deleteOne(id).catch(() => {});
+    refetch();
+  }
 
   return (
     <Modal title={sku_id ? `Restock history — ${productName}` : "All restock history"} onClose={onClose}>
@@ -175,13 +191,21 @@ function HistoryModal({ sku_id, productName, onClose }: {
                       <p className="mt-1.5 text-xs text-zinc-500 italic">"{r.note}"</p>
                     )}
                   </div>
-                  <div className="text-right shrink-0">
-                    <p className="text-xs font-medium text-zinc-700 dark:text-zinc-300">
-                      {r.restocked_by}
-                    </p>
-                    <p className="text-xs text-zinc-400">
-                      {new Date(r.restocked_at).toLocaleString()}
-                    </p>
+                  <div className="flex items-start gap-2">
+                    <div className="text-right shrink-0">
+                      <p className="text-xs font-medium text-zinc-700 dark:text-zinc-300">
+                        {r.restocked_by}
+                      </p>
+                      <p className="text-xs text-zinc-400">
+                        {new Date(r.restocked_at).toLocaleString()}
+                      </p>
+                    </div>
+                    {isAdmin && (
+                      <button onClick={() => handleDeleteOne(r.id)}
+                        className="shrink-0 rounded-xl p-1.5 text-zinc-400 hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-950/30">
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -191,7 +215,15 @@ function HistoryModal({ sku_id, productName, onClose }: {
           )
         )}
       </div>
-      <div className="flex justify-end pt-4 border-t border-black/5 dark:border-white/10 mt-4">
+      <div className="flex items-center justify-between pt-4 border-t border-black/5 dark:border-white/10 mt-4">
+        {isAdmin && logs && logs.length > 0 ? (
+          <Button variant="danger" onClick={handleClearAll} disabled={clearing}>
+            <span className="flex items-center gap-2">
+              <Trash2 className="h-4 w-4" />
+              {clearing ? "Clearing…" : "Clear all history"}
+            </span>
+          </Button>
+        ) : <span />}
         <Button variant="ghost" onClick={onClose}>Close</Button>
       </div>
     </Modal>
@@ -202,7 +234,10 @@ function HistoryModal({ sku_id, productName, onClose }: {
 type SortKey = "name" | "stock_quantity" | "reorder_point";
 type SortDir = "asc" | "desc";
 
-export default function RestockPage() {
+// Accept optional currentUser so we know if admin
+interface RestockPageProps { isAdmin?: boolean; }
+
+export default function RestockPage({ isAdmin = false }: RestockPageProps) {
   const { data: products, loading, error, refetch } = useApi(() => productsApi.list());
   const [restockProduct,  setRestockProduct]  = useState<Product | null>(null);
   const [historyProduct,  setHistoryProduct]  = useState<Product | null | "all">(null);
@@ -365,6 +400,7 @@ export default function RestockPage() {
           sku_id={historyProduct === "all" ? undefined : (historyProduct as Product).sku_id}
           productName={historyProduct === "all" ? undefined : (historyProduct as Product).name}
           onClose={() => setHistoryProduct(null)}
+          isAdmin={isAdmin}
         />
       )}
     </div>

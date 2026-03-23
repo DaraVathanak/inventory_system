@@ -16,7 +16,7 @@ function ReportFormModal({ report, onClose, onDone }: {
   const [saving, setSaving]       = useState(false);
   const [formError, setFormError] = useState("");
   const [form, setForm] = useState({
-    type: report?.type ?? "weekly",
+    type: (report?.type ?? "weekly") as "weekly" | "monthly" | "custom",
     date: report?.date ? String(report.date).split("T")[0] : new Date().toISOString().split("T")[0],
   });
 
@@ -43,7 +43,7 @@ function ReportFormModal({ report, onClose, onDone }: {
         </div>
 
         <FormField label="Report type">
-          <Select value={form.type} onChange={(e) => setForm(f => ({ ...f, type: e.target.value }))}>
+          <Select value={form.type} onChange={(e) => setForm(f => ({ ...f, type: e.target.value as "weekly" | "monthly" | "custom" }))}>
             <option value="weekly">Weekly</option>
             <option value="monthly">Monthly</option>
             <option value="custom">Custom (single day)</option>

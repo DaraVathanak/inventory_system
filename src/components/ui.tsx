@@ -177,7 +177,7 @@ export function Button({ variant = "primary", className, ...props }: ButtonProps
         variant === "primary" &&
           "bg-zinc-950 text-white hover:opacity-90 dark:bg-white dark:text-zinc-950",
         variant === "danger" &&
-          "bg-red-600 text-white hover:bg-red-700",
+          "bg-red-600 text-white hover:bg-red-700 dark:bg-red-700 dark:hover:bg-red-800",
         variant === "ghost" &&
           "border border-black/10 text-zinc-600 hover:bg-zinc-50 dark:border-white/10 dark:text-zinc-300 dark:hover:bg-zinc-900",
         className
@@ -203,9 +203,10 @@ export function Thead({ children }: { children: ReactNode }) {
   );
 }
 
-export function Th({ children, className }: { children: ReactNode; className?: string }) {
+export function Th({ children, className, onClick }: { children?: ReactNode; className?: string; onClick?: () => void }) {
   return (
     <th
+      onClick={onClick}
       className={cn(
         "px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400",
         className
@@ -216,9 +217,10 @@ export function Th({ children, className }: { children: ReactNode; className?: s
   );
 }
 
-export function Td({ children, className }: { children: ReactNode; className?: string }) {
+export function Td({ children, className, onClick }: { children?: ReactNode; className?: string; onClick?: () => void }) {
   return (
     <td
+      onClick={onClick}
       className={cn(
         "px-5 py-4 text-zinc-700 dark:text-zinc-300",
         className
@@ -229,7 +231,7 @@ export function Td({ children, className }: { children: ReactNode; className?: s
   );
 }
 
-export function Tr({ children, className }: { children: ReactNode; className?: string }) {
+export function Tr({ children, className, onClick }: { children?: ReactNode; className?: string; onClick?: () => void }) {
   return (
     <tr
       className={cn(

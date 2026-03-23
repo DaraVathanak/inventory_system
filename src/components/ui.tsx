@@ -234,6 +234,7 @@ export function Td({ children, className, onClick }: { children?: ReactNode; cla
 export function Tr({ children, className, onClick }: { children?: ReactNode; className?: string; onClick?: () => void }) {
   return (
     <tr
+      onClick={onClick}
       className={cn(
         "border-b border-black/5 bg-white/70 last:border-0 dark:border-white/5 dark:bg-zinc-950/50",
         className
